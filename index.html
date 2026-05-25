@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Art Depth Experiment</title>
+
+  <style>
+    body {
+      margin: 0;
+      background: black;
+      color: white;
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    #app {
+      width: 900px;
+      max-width: 95vw;
+      text-align: center;
+    }
+
+    .fixation {
+      font-size: 80px;
+    }
+
+    .stimulus {
+      max-width: 80vw;
+      max-height: 70vh;
+      object-fit: contain;
+    }
+
+    button {
+      padding: 12px 20px;
+      margin: 8px;
+      font-size: 18px;
+      cursor: pointer;
+    }
+
+    .scale button {
+      width: 60px;
+      height: 50px;
+    }
+
+    .small {
+      font-size: 15px;
+      color: #ccc;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+
+<body>
+<div id="app"></div>
+
+<script>
+/************************************************
+ * 시간 설정
+ ************************************************/
+
+const FIXATION_MS = 500;
+const DEPTH_STIMULUS_MS = 700;
+const BLANK_MS = 300;
+
+/************************************************
+ * 자극 설정
+ * oldStimuli = 1블록에서 제시되고 2블록에도 다시 나오는 그림
+ * newStimuli = 1블록에는 안 나오고 2블록에서만 나오는 그림
+ ************************************************/
+
+const oldStimuli = [
+  { id: "high1", image: "images/high1.png", depth: "high", old_new: "old" },
+  { id: "high2", image: "images/high2.png", depth: "high", old_new: "old" },
+  { id: "high3", image: "images/high3.png", depth: "high", old_new: "old" },
+
+  { id: "middle1", image: "images/middle1.png", depth: "middle", old_new: "old" },
+  { id: "middle2", image: "images/middle2.jpeg", depth: "middle", old_new: "old" },
+
+  { id: "low1", image: "images/low1.png", depth: "low", old_new: "old" },
+  { id: "low2", image: "images/low2.png", depth: "low", old_new: "old" }
+];
+
+const newStimuli = [
+  { id: "high4", image: "images/high4.png", depth: "high", old_new: "new" },
+  { id: "high5", image: "images/high5.png", depth: "high", old_new: "new" },
+  { id: "high6", image: "images/high6.png", depth: "high", old_new: "new" },
+
+  { id: "middle3", image: "images/middle3.jpeg", depth: "middle", old_new: "new" },
+  { id: "middle4", image: "images/middle4.jpeg", depth: "middle", old_new: "new" },
+
+  { id: "low3", image: "images/low3.jpeg", depth: "low", old_new: "new" },
+  { id: "low4", image: "images/low4.jpeg", depth: "low", old_new: "new" }
+];
+
+/************************************************
+ * 전역 변수
+ ************************************************/
+
+const app = document.getElementById("app");
+
+let participantID = "";
+let depthIndex = 0;
+let recogIndex = 0;
+let results = [];
+
+const depthTrials = shuffle(oldStimuli);
+const recognitionTrials = shuffle([...oldStimuli, ...newStimuli]);
+
+/************************************************
+ * 유틸 함수
+ ************************************************/
+
+function shuffle(array) {
+  let copied = [...array];
+
+  for (let i = copied.length - 1; i > 0; i--) {
+    let j = Math.floor(Math.random() * (i + 1));
+    [copied[i], copied[j]] = [copied[j], copied[i]];
+  }
+
+  return copied;
+}
+
+function showFixation(callback) {
+  app.innerHTML = `<div class="fixation">+</div>`;
+
+  setTimeout(() => {
+    callback();
+  }, FIXATION_MS);
+}
+
+function showBlank(callback) {
+  app.innerHTML = ``;
+
+  setTimeout(() => {
+    callback();
+  }, BLANK_MS);
+}
+
+/************************************************
+ * 시작 화면
+ ************************************************/
+
+function showIntro() {
+  app.innerHTML = `
+    <h1>공간 깊이감과 예술 선호 실험</h1>
+
+    <p class="small">
+      이 실험은 두 단계로 구성됩니다.<br><br>
+      1단계에서는 짧게 제시된 그림의 공간적 깊이감을 평가합니다.<br>
+      2단계에서는 그림을 충분히 감상한 뒤 선호도와 이전 제시 여부를 응답합니다.
+    </p>
+
+    <p>참가자 ID를 입력하세요.</p>
+
+    <input id="pid" style="font-size:20px; padding:10px; width:250px;">
+
+    <br><br>
+
+    <button onclick="startExperiment()">시작</button>
+  `;
+}
+
+function startExperiment() {
+  participantID = document.getElementById("pid").value || "anonymous";
+  showDepthInstruction();
+}
+
+/************************************************
+ * 1블록: 깊이감 평가
+ ************************************************/
+
+function showDepthInstruction() {
+  app.innerHTML = `
+    <h2>1단계: 공간 깊이감 평가</h2>
+
+    <p class="small">
+      화면 중앙의 +를 본 뒤 그림이 0.5초 동안 제시됩니다.<br>
+      그림을 본 후, 그림의 공간적 깊이감이 어느 정도였는지 평가하세요.<br><br>
+      1 = 전혀 깊이감 없음 / 6 = 매우 깊이감 있음
+    </p>
+
+    <button onclick="runDepthTrial()">1단계 시작</button>
+  `;
+}
+
+function runDepthTrial() {
+  if (depthIndex >= depthTrials.length) {
+    showRecognitionInstruction();
+    return;
+  }
+
+  showFixation(() => {
+    showDepthStimulus();
+  });
+}
+
+function showDepthStimulus() {
+  const stim = depthTrials[depthIndex];
+
+  app.innerHTML = `
+    <img
+      class="stimulus"
+      src="${stim.image}"
+      onerror="imageError('${stim.image}')"
+    >
+  `;
+
+  setTimeout(() => {
+    showBlank(() => {
+      showDepthRating();
+    });
+  }, DEPTH_STIMULUS_MS);
+}
+
+function showDepthRating() {
+  const startRT = performance.now();
+  const stim = depthTrials[depthIndex];
+
+  app.innerHTML = `
+    <h2>방금 본 그림의 공간적 깊이감은 어느 정도였나요?</h2>
+
+    <div class="scale">
+      ${[1,2,3,4,5,6].map(n =>
+        `<button onclick="recordDepthRating(${n}, ${startRT})">${n}</button>`
+      ).join("")}
+    </div>
+
+    <p class="small">
+      1 = 전혀 깊이감 없음 / 6 = 매우 깊이감 있음
+    </p>
+  `;
+}
+
+function recordDepthRating(rating, startRT) {
+  const stim = depthTrials[depthIndex];
+
+  results.push({
+    participant_id: participantID,
+    block: "depth",
+    trial: depthIndex + 1,
+    stimulus_id: stim.id,
+    image: stim.image,
+    depth_category: stim.depth,
+    old_new: stim.old_new,
+    depth_rating: rating,
+    depth_rt_ms: Math.round(performance.now() - startRT),
+    preference_rating: "",
+    preference_rt_ms: "",
+    recognition_response: "",
+    recognition_correct: ""
+  });
+
+  depthIndex++;
+  runDepthTrial();
+}
+
+/************************************************
+ * 2블록: 선호도 + 재인
+ ************************************************/
+
+function showRecognitionInstruction() {
+  app.innerHTML = `
+    <h2>2단계: 선호도 및 재인 판단</h2>
+
+    <p class="small">
+      이제 그림이 하나씩 제시됩니다.<br>
+      그림을 충분히 감상한 뒤 스페이스바를 누르세요.<br><br>
+      이후 그림의 선호도를 평가하고,<br>
+      이 그림을 1단계에서 본 것 같은지 응답합니다.
+    </p>
+
+    <button onclick="runRecognitionTrial()">2단계 시작</button>
+  `;
+}
+
+function runRecognitionTrial() {
+  if (recogIndex >= recognitionTrials.length) {
+    finishExperiment();
+    return;
+  }
+
+  showFixation(() => {
+    showRecognitionStimulus();
+  });
+}
+
+function showRecognitionStimulus() {
+  const stim = recognitionTrials[recogIndex];
+
+  app.innerHTML = `
+    <div>
+      <img
+        class="stimulus"
+        src="${stim.image}"
+        onerror="imageError('${stim.image}')"
+      >
+
+      <p class="small">
+        충분히 감상한 뒤 스페이스바를 누르세요.
+      </p>
+    </div>
+  `;
+
+  document.addEventListener("keydown", waitForSpace);
+}
+
+function waitForSpace(e) {
+  if (e.code === "Space") {
+    document.removeEventListener("keydown", waitForSpace);
+    showPreferenceRating();
+  }
+}
+
+function showPreferenceRating() {
+  const startRT = performance.now();
+
+  app.innerHTML = `
+    <h2>이 작품이 당신의 마음을 얼마나 움직이나요?</h2>
+
+    <div class="scale">
+      ${[1,2,3,4,5,6].map(n =>
+        `<button onclick="recordPreferenceRating(${n}, ${startRT})">${n}</button>`
+      ).join("")}
+    </div>
+
+    <p class="small">
+      1 = 전혀 마음을 움직이지 않음 / 6 = 매우 마음을 움직임
+    </p>
+  `;
+}
+
+function recordPreferenceRating(rating, startRT) {
+  const stim = recognitionTrials[recogIndex];
+
+  results.push({
+    participant_id: participantID,
+    block: "recognition_preference",
+    trial: recogIndex + 1,
+    stimulus_id: stim.id,
+    image: stim.image,
+    depth_category: stim.depth,
+    old_new: stim.old_new,
+    depth_rating: "",
+    depth_rt_ms: "",
+    preference_rating: rating,
+    preference_rt_ms: Math.round(performance.now() - startRT),
+    recognition_response: "",
+    recognition_correct: ""
+  });
+
+  showRecognitionQuestion();
+}
+
+function showRecognitionQuestion() {
+  const startRT = performance.now();
+
+  app.innerHTML = `
+    <h2>이 그림을 1단계에서 본 것 같나요?</h2>
+
+    <button onclick="recordRecognition('old', ${startRT})">
+      봤다
+    </button>
+
+    <button onclick="recordRecognition('new', ${startRT})">
+      못 봤다
+    </button>
+
+    <button onclick="recordRecognition('unsure', ${startRT})">
+      잘 모르겠다
+    </button>
+  `;
+}
+
+function recordRecognition(answer, startRT) {
+  const stim = recognitionTrials[recogIndex];
+
+  const actual = stim.old_new;
+
+  let correct = "";
+
+  if (answer === "unsure") {
+    correct = "";
+  } else if (answer === actual) {
+    correct = 1;
+  } else {
+    correct = 0;
+  }
+
+  results[results.length - 1].recognition_response = answer;
+  results[results.length - 1].recognition_correct = correct;
+  results[results.length - 1].recognition_rt_ms =
+    Math.round(performance.now() - startRT);
+
+  recogIndex++;
+  runRecognitionTrial();
+}
+
+/************************************************
+ * 이미지 에러 표시
+ ************************************************/
+
+function imageError(path) {
+  app.innerHTML = `
+    <h1 style="color:red;">이미지 로딩 실패</h1>
+    <p>${path}</p>
+    <p class="small">
+      images 폴더 안에 파일명이 정확히 있는지 확인하세요.
+    </p>
+  `;
+}
+
+/************************************************
+ * 종료 및 CSV 저장
+ ************************************************/
+
+function finishExperiment() {
+  downloadCSV(results, `results_${participantID}.csv`);
+
+  app.innerHTML = `
+    <h1>실험 종료</h1>
+    <p>참여해주셔서 감사합니다.</p>
+    <p class="small">CSV 파일이 다운로드되었습니다.</p>
+  `;
+}
+
+function downloadCSV(data, filename) {
+  if (!data.length) return;
+
+  const headers = [
+    "participant_id",
+    "block",
+    "trial",
+    "stimulus_id",
+    "image",
+    "depth_category",
+    "old_new",
+    "depth_rating",
+    "depth_rt_ms",
+    "preference_rating",
+    "preference_rt_ms",
+    "recognition_response",
+    "recognition_correct",
+    "recognition_rt_ms"
+  ];
+
+  let csv = [];
+  csv.push(headers.join(","));
+
+  data.forEach(row => {
+    let values = headers.map(h => {
+      let value = row[h] ?? "";
+      return `"${String(value).replace(/"/g, '""')}"`;
+    });
+
+    csv.push(values.join(","));
+  });
+
+  let blob = new Blob(
+    ["\ufeff" + csv.join("\n")],
+    { type: "text/csv;charset=utf-8;" }
+  );
+
+  let url = URL.createObjectURL(blob);
+  let a = document.createElement("a");
+
+  a.href = url;
+  a.download = filename;
+  a.click();
+
+  URL.revokeObjectURL(url);
+}
+
+/************************************************
+ * 키보드 숫자 응답 지원
+ ************************************************/
+
+document.addEventListener("keydown", function(e) {
+  const key = e.key;
+
+  if (!["1","2","3","4","5","6"].includes(key)) return;
+
+  const buttons = [...document.querySelectorAll("button")];
+  const target = buttons.find(btn => btn.textContent.trim() === key);
+
+  if (target) target.click();
+});
+
+/************************************************
+ * 시작
+ ************************************************/
+
+showIntro();
+</script>
+
+</body>
+</html>
